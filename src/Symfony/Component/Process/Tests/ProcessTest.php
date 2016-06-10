@@ -209,6 +209,24 @@ class ProcessTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($expectedLength, strlen($p->getErrorOutput()));
     }
 
+    public function testLiveStreamAsInput()
+    {
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, 'hello');
+        rewind($stream);
+
+        $p = $this->getProcess(sprintf('%s -r %s', self::$phpBin, escapeshellarg('stream_copy_to_stream(STDIN, STDOUT);')));
+        $p->setInput($stream);
+        $p->start(function ($type, $data) use ($stream) {
+            if ('hello' === $data) {
+                fclose($stream);
+            }
+        });
+        $p->wait();
+
+        $this->assertSame('hello', $p->getOutput());
+    }
+
     /**
      * @expectedException \Symfony\Component\Process\Exception\LogicException
      * @expectedExceptionMessage Input can not be set while the process is running.
@@ -1160,21 +1178,28 @@ class ProcessTest extends \PHPUnit_Framework_TestCase
     }
 
     /**
-     * provides default method names for simple getter/setter.
+     * @dataProvider provideVariousIncrementals
      */
-    public function methodProvider()
-    {
-        $defaults = array(
-            array('CommandLine'),
-            array('Timeout'),
-            array('WorkingDirectory'),
-            array('Env'),
-            array('Stdin'),
-            array('Input'),
-            array('Options'),
-        );
+    public function testIncrementalOutputDoesNotRequireAnotherCall($stream, $method) {
+        $process = $this->getProcess(self::$phpBin.' -r '.escapeshellarg('$n = 0; while ($n < 3) { file_put_contents(\''.$stream.'\', $n, 1); $n++; usleep(1000); }'), null, null, null, null);
+        $process->start();
+        $result = '';
+        $limit = microtime(true) + 3;
+        $expected = '012';
 
-        return $defaults;
+        while ($result !== $expected && microtime(true) < $limit) {
+            $result .= $process->$method();
+        }
+
+        $this->assertSame($expected, $result);
+        $process->stop();
+    }
+
+    public function provideVariousIncrementals() {
+        return array(
+            array('php://stdout', 'getIncrementalOutput'),
+            array('php://stderr', 'getIncrementalErrorOutput'),
+        );
     }
 
     /**

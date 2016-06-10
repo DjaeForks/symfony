@@ -110,6 +110,7 @@ class EmailValidatorTest extends AbstractConstraintValidatorTest
 
     /**
      * @dataProvider getDnsChecks
+     * @requires function Symfony\Bridge\PhpUnit\DnsMock::withMockedHosts
      */
     public function testDnsChecks($type, $violation)
     {
@@ -142,5 +143,20 @@ class EmailValidatorTest extends AbstractConstraintValidatorTest
             array('AAAA', false),
             array('AAAA', Email::HOST_CHECK_FAILED_ERROR),
         );
+    }
+
+    /**
+     * @requires function Symfony\Bridge\PhpUnit\DnsMock::withMockedHosts
+     */
+    public function testHostnameIsProperlyParsed()
+    {
+        DnsMock::withMockedHosts(array('baz.com' => array(array('type' => 'MX'))));
+
+        $this->validator->validate(
+            '"foo@bar"@baz.com',
+            new Email(array('checkMX' => true))
+        );
+
+        $this->assertNoViolation();
     }
 }

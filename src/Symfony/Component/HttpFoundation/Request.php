@@ -717,7 +717,7 @@ class Request
      * Note: Finding deep items is deprecated since version 2.8, to be removed in 3.0.
      *
      * @param string $key     the key
-     * @param mixed  $default the default value
+     * @param mixed  $default the default value if the parameter key does not exist
      * @param bool   $deep    is parameter deep in multidimensional array
      *
      * @return mixed
@@ -1343,8 +1343,9 @@ class Request
      */
     public function getFormat($mimeType)
     {
+        $canonicalMimeType = null;
         if (false !== $pos = strpos($mimeType, ';')) {
-            $mimeType = substr($mimeType, 0, $pos);
+            $canonicalMimeType = substr($mimeType, 0, $pos);
         }
 
         if (null === static::$formats) {
@@ -1353,6 +1354,9 @@ class Request
 
         foreach (static::$formats as $format => $mimeTypes) {
             if (in_array($mimeType, (array) $mimeTypes)) {
+                return $format;
+            }
+            if (null !== $canonicalMimeType && in_array($canonicalMimeType, (array) $mimeTypes)) {
                 return $format;
             }
         }

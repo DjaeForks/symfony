@@ -155,24 +155,27 @@ class Filesystem
      */
     public function remove($files)
     {
-        $files = iterator_to_array($this->toIterator($files));
+        if ($files instanceof \Traversable) {
+            $files = iterator_to_array($files, false);
+        } elseif (!is_array($files)) {
+            $files = array($files);
+        }
         $files = array_reverse($files);
         foreach ($files as $file) {
-            if (@(unlink($file) || rmdir($file))) {
-                continue;
-            }
             if (is_link($file)) {
                 // See https://bugs.php.net/52176
-                $error = error_get_last();
-                throw new IOException(sprintf('Failed to remove symlink "%s": %s.', $file, $error['message']));
+                if (!@(unlink($file) || '\\' !== DIRECTORY_SEPARATOR || rmdir($file)) && file_exists($file)) {
+                    $error = error_get_last();
+                    throw new IOException(sprintf('Failed to remove symlink "%s": %s.', $file, $error['message']));
+                }
             } elseif (is_dir($file)) {
-                $this->remove(new \FilesystemIterator($file));
+                $this->remove(new \FilesystemIterator($file, \FilesystemIterator::CURRENT_AS_PATHNAME | \FilesystemIterator::SKIP_DOTS));
 
-                if (!@rmdir($file)) {
+                if (!@rmdir($file) && file_exists($file)) {
                     $error = error_get_last();
                     throw new IOException(sprintf('Failed to remove directory "%s": %s.', $file, $error['message']));
                 }
-            } elseif (file_exists($file)) {
+            } elseif (!@unlink($file) && file_exists($file)) {
                 $error = error_get_last();
                 throw new IOException(sprintf('Failed to remove file "%s": %s.', $file, $error['message']));
             }
@@ -486,13 +489,13 @@ class Filesystem
     {
         list($scheme, $hierarchy) = $this->getSchemeAndHierarchy($dir);
 
-        // If no scheme or scheme is "file" create temp file in local filesystem
-        if (null === $scheme || 'file' === $scheme) {
+        // If no scheme or scheme is "file" or "gs" (Google Cloud) create temp file in local filesystem
+        if (null === $scheme || 'file' === $scheme || 'gs' === $scheme) {
             $tmpFile = tempnam($hierarchy, $prefix);
 
             // If tempnam failed or no scheme return the filename otherwise prepend the scheme
             if (false !== $tmpFile) {
-                if (null !== $scheme) {
+                if (null !== $scheme && 'gs' !== $scheme) {
                     return $scheme.'://'.$tmpFile;
                 }
 
